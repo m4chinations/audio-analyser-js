@@ -17,7 +17,23 @@
         this.audioElement = null;
         this.passthru = (options && 'passthru' in options) ? options.passthru : false;
         this.mono = (options && 'mono' in options) ? options.mono : true;
+        this.smoothing = (options && 'smoothing' in options) ? options.smoothing : 0;
         this.rmsValues = [];
+        this.channelCount = -1;
+
+        Object.defineProperty(this, 'audio', {
+            get: function() {
+                return this.audioElement;
+            },
+            set: undefined
+        });
+
+        Object.defineProperty(this, 'channels', {
+            get: function() {
+                return this.channelCount;
+            },
+            set: undefined
+        });
 
         if (this.passthru) {
             this.channelMerger = null;
@@ -41,6 +57,7 @@
                 if (!navigator) {
                     reject('userMedia can only be used in browser environments'); return;
                 } else {
+
                     navigator.mediaDevices.getUserMedia({
                         audio: true, video: false
                     }).then(((stream) => {
@@ -53,52 +70,69 @@
                 }
             } else if (typeof audio === 'string') { /* URL input */
                 try {
-                    /* check if same domain */
-                    // Create the XHR object. from html5rocks
+
                     var createCORSRequest = function(method, url) {
                         var xhr = new XMLHttpRequest();
                         if ("withCredentials" in xhr) {
-                          // XHR for Chrome/Firefox/Opera/Safari.
-                          xhr.open(method, url, true);
+                            // Most browsers.
+                            xhr.open(method, url, true);
                         } else if (typeof XDomainRequest != "undefined") {
-                          // XDomainRequest for IE.
-                          xhr = new XDomainRequest();
-                          xhr.open(method, url);
+                            // IE8 & IE9
+                            xhr = new XDomainRequest();
+                            xhr.open(method, url);
                         } else {
-                          // CORS not supported.
-                          xhr = null;
+                            // CORS not supported.
+                            xhr = null;
                         }
                         return xhr;
-                    }
-                    var xhr = createCORSRequest('GET', audio);
-                    if (!xhr) {
-                        console.log("CORS not supported for url", audio, "corsifying request...")
-                        audio = "https://corsify.appspot.com/" + audio;
-                        xhr = createCORSRequest('GET', audio);
-                    }
-                    if (!xhr) {
-                        reject('Failed to CORSify given URL.'); return;
-                    }
-                    xhr.abort();
-                    this.audioElement = new Audio(audio);
-                    this.audioElement.crossOrigin = 'anonymous';
+                    };
 
-                    this.sourceNode = this.audioContext.createMediaElementSource(this.audioElement);
-                    this.createGraph();
-                    resolve(this); return;
+                    var url = audio;
+                    var method = 'GET';
+                    var xhr = createCORSRequest(method, url);
+
+                    var stateChangeCorsCheck = function(xhr) {
+                        if (xhr.readyState == XMLHttpRequest.HEADERS_RECEIVED && xhr.status == 200) {
+                            xhr.onreadystatechange = undefined;
+                            xhr.onprogress = undefined;
+                            this.audioElement = new Audio(audio);
+                            this.audioElement.crossOrigin = 'anonymous';
+
+                            this.sourceNode = this.audioContext.createMediaElementSource(this.audioElement);
+                            this.createGraph();
+                            xhr.abort();
+                            resolve(this); return;
+                        }
+                    };
+
+                    xhr.onreadystatechange = stateChangeCorsCheck.bind(this, xhr);
+
+                    xhr.onerror = (function() {
+                        console.log("CORS NOT ENABLED");
+                        reject('Could not load URL. CORS not enabled.'); return;
+                    }).bind(this);
+                    window.xhr = xhr;
+                    xhr.send();
+
                 } catch (e) {
                     reject(e); return;
                 }
             } else if (audio instanceof Audio || audio instanceof HTMLAudioElement) { /* HTML5 Audio Element input */
                 try {
                     this.audioElement = audio;
-                    this.sourceNode = this.audioContet.createMediaElementSource(this.audioElement);
+                    this.sourceNode = this.audioContext.createMediaElementSource(this.audioElement);
                     this.createGraph();
                     resolve(this); return;
                 } catch (e) {
                     reject(e); return;
                 }
 
+            } else if (audio instanceof File) {
+                var audioURL = URL.createObjectURL(audio);
+                this.audioElement = new Audio(audioURL);
+                this.sourceNode = this.audioContext.createMediaElementSource(this.audioElement);
+                this.createGraph();
+                resolve(this); return;
             } else {
                 reject("No suitable handler for audio input"); return;
             }
@@ -108,30 +142,50 @@
     /* sets up audio api graph, channel splitters/mergers if non-mono, passthru to destination. */
     _AudioAnalyser.prototype.createGraph = function () {
         if (!this.mono) {
-            var channels = this.sourceNode.channels;
 
-            this.channelSplitter = this.audioContext.createChannelSplitter(channels);
-
-            if (this.passthru) {
-                this.channelMerger = this.audioContext.createChannelMerger(channels);
-            }
-
-            this.sourceNode.connect(this.channelSplitter);
-
-            for (var i = 0; i < channels; i++) {
-                this.analyserNodes.push(
-                    (this.audioContext.createAnalyser())
-                );
-                this.channelSplitter.connect(this.analyserNodes[i], i, 0);
-                if (this.passthru) {
-                    this.analyserNodes[i].connect(this.channelMerger, 0, i);
+            (new Promise((resolve, reject) => {
+                /* determine how many channels there are */
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', this.audioElement.src, true);
+                xhr.responseType = "arraybuffer";
+                xhr.onload = (function() {
+                  this.audioContext.decodeAudioData(xhr.response, function(decodedBuffer) {
+                    resolve(decodedBuffer.numberOfChannels);
+                  });
+                }).bind(this);
+                xhr.error = function () {
+                    reject("Unable to retrieve channels.");
                 }
-            }
-            if (passthru) {
-                this.channelMerger.connect(this.audioContext.destination);
-            }
+                xhr.send(null);
+            })).then((channels) => {
+
+                this.channelCount = channels;
+                this.channelSplitter = this.audioContext.createChannelSplitter(channels);
+
+                if (this.passthru) {
+                    this.channelMerger = this.audioContext.createChannelMerger(channels);
+                }
+
+                this.sourceNode.connect(this.channelSplitter);
+
+                for (var i = 0; i < channels; i++) {
+                    this.analyserNodes.push(
+                        (this.audioContext.createAnalyser())
+                    );
+                    this.analyserNodes[i].smoothingTimeConstant = this.smoothing;
+                    this.channelSplitter.connect(this.analyserNodes[i], i, 0);
+                    if (this.passthru) {
+                        this.analyserNodes[i].connect(this.channelMerger, 0, i);
+                    }
+                }
+                if (this.passthru) {
+                    this.channelMerger.connect(this.audioContext.destination);
+                }
+            });
+
         } else if (this.mono) {
             this.analyserNodes[0] = this.audioContext.createAnalyser();
+            this.analyserNodes[0].smoothingTimeConstant = this.smoothing;
             this.sourceNode.connect(this.analyserNodes[0]);
             if (this.passthru) {
                 this.analyserNodes[0].connect(this.audioContext.destination);
@@ -155,6 +209,8 @@
             }
         });
     }
+
+
 
     _AudioAnalyser.prototype.waveform = function(channel) {
         if (!channel) channel = 0;
@@ -181,13 +237,18 @@
         var data = this.waveform(channel);
         var total = 0;
         for (var i = 0; i < data.length; i++) {
-            total += data[i] * data[i];
+            total += Math.pow(Math.abs(data[i] - 128), 2);
         }
         return Math.sqrt(total / data.length);
 
     }
 
-    _AudioAnalyser.prototype.audio = this.audioElement;
+    _AudioAnalyser.prototype.end = function() {
+        this.audioContext.close();
+        delete this;
+    }
+
+
 
     global.AudioAnalyser = AudioAnalyser;
 })(this);

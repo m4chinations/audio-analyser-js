@@ -1,7 +1,7 @@
 {
   "name": "audio-analyser-js",
   "version": "0.0.1",
-  "description": "a vanilla js library aimed at simplifying the analysys of audio data from any source",
+  "description": "a vanilla js library aimed at simplifying the analysis of audio data from any source",
   "main": "index.js",
   "directories": {
     "doc": "docs"

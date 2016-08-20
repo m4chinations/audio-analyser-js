@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Multi-Channel Metering</title>
+
+    <style>
+        #editor {
+            height: 600px;
+            width: 800px;
+        }
+        input#audioInput, pre {
+            min-width: 200px;
+            width: 100%;
+            max-width: 600px;
+            white-space: pre-wrap;       /* CSS 3 */
+            white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
+            white-space: -pre-wrap;      /* Opera 4-6 */
+            white-space: -o-pre-wrap;    /* Opera 7 */
+            word-wrap: break-word;       /* Internet Explorer 5.5+ */
+        }
+
+        pre#error {
+            color: red;
+            font-size: 2rem;
+            float: none;
+        }
+        div.data {
+            float:left;
+        }
+
+        p.note {
+            color: orange;
+            font-size: 1.5rem;
+        }
+        p {
+            max-width: 800px;
+        }
+        div#meters {
+            min-height: 200px;
+            overflow: hidden;
+        }
+        div.meter {
+            min-height: 200px;
+            height: 200px;
+            position:relative;
+            width: 50px;
+            background: linear-gradient(to top, #360033 , #0b8793);
+            margin: 0rem 1rem;
+            display: inline-block;
+        }
+        div.bar {
+            background-color: white;
+        }
+        .label {
+            position:absolute;
+            overflow: visible;
+            top: 0;
+        }
+    </style>
+</head>
+<body>
+    <a href="/docs">Back to demos</a>
+    <h1>Audio Analyser JS</h1>
+    <h2>Multi-channel metering demo</h2>
+    <p>This demo plays a 5.1 surround sound OGG file, and meters each channel's (6 in total) RMS value.</p>
+    <button onclick="toggleCode()">View/Edit demo code</button>
+    <div style="display:none" id="editor">AudioAnalyser('./surround.ogg', { passthru: true, mono: false, smoothing: 0.5}).then((result) => {
+    analyser = result;
+    analyser.audio.play();
+    function draw() {
+        requestAnimationFrame(draw);
+        for (var channel = 0; channel < analyser.channels; channel++) {
+            var bar = document.getElementById('meters').children[channel].children[0];
+            var rms = analyser.rms(channel);
+            bar.style.height = (200 - rms * 5) + 'px';
+        }
+    } draw();
+});
+    </div>
+    <button id="start" onclick="start()">Start Analysis</button><button id="stop" onclick="stop()" disabled>Stop Analysis</button>
+    <p class="note">This demo will play audio through to your speakers.<p>
+
+        <div id="meters">
+            <div class="meter"><div class="bar"></div><span class="label">Front Left</span></div>
+            <div class="meter"><div class="bar"></div><span class="label">Front Right</span></div>
+            <div class="meter"><div class="bar"></div><span class="label">Front Center</span></div>
+            <div class="meter"><div class="bar"></div><span class="label">Sub</span></div>
+            <div class="meter"><div class="bar"></div><span class="label">Rear Left</span></div>
+            <div class="meter"><div class="bar"></div><span class="label">Rear Right</span></div>
+        </div>
+
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <script src="../src/audio.js"></script>
+    <script src="./ace.js"></script>
+    <script type="text/javascript">
+        var analyser;
+        var editor = ace.edit("editor");
+        editor.setTheme("ace/theme/github");
+        editor.getSession().setMode("ace/mode/javascript");
+        function toggleCode() {
+            document.getElementById('editor').style.display =
+                document.getElementById('editor').style.display === 'none' ? '' : 'none';
+            editor.resize();
+        }
+        function stop() {
+            if (analyser) {
+                analyser.end();
+            }
+            document.getElementById('start').disabled = false;
+            document.getElementById('stop').disabled = true;
+        }
+        function start() {
+            eval(editor.getValue());
+            document.getElementById('start').disabled = true;
+            document.getElementById('stop').disabled = false;
+        }
+    </script>
+</body>
+</html>

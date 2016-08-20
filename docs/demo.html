@@ -2,9 +2,147 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title></title>
+    <title>Raw Numbers Demo</title>
+
+    <style>
+        #editor {
+            height: 600px;
+            width: 800px;
+        }
+        input#audioInput, pre {
+            min-width: 200px;
+            width: 100%;
+            max-width: 600px;
+            white-space: pre-wrap;       /* CSS 3 */
+            white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
+            white-space: -pre-wrap;      /* Opera 4-6 */
+            white-space: -o-pre-wrap;    /* Opera 7 */
+            word-wrap: break-word;       /* Internet Explorer 5.5+ */
+        }
+
+        pre#error {
+            color: red;
+            font-size: 2rem;
+            float: none;
+        }
+        div.data {
+            float:left;
+        }
+
+        p.note {
+            color: orange;
+            font-size: 1.5rem;
+        }
+        p {
+            max-width: 800px;
+        }
+    </style>
 </head>
 <body>
+    <a href="/docs">Back to demos</a>
+    <h1>Audio Analyser JS</h1>
+    <h2>Raw Numbers Demo</h2>
+    <p>This demo shows the default, raw values you can retrive from an AudioAnalyser, without changing any options. They include the
+       <a href="https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode/getByteTimeDomainData">waveform (time domain) data</a>
+       the <a href="https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode/getByteFrequencyData">frequency data</a> and the
+       root-mean-square value derived from the waveform. For more information on each set of values, head to their individual demo pages.</p>
+    <button onclick="toggleCode()">View/Edit demo code</button>
+    <div style="display:none" id="editor">AudioAnalyser(input, { passthru: true }).then((result) => {
+    analyser = result;
+    if (analyser.audio) /* if the audio needs to be played, e.g. not a mic source */
+        analyser.audio.play();
+    var frameCount = 0;
+    function draw() {
+        requestAnimationFrame(draw); frameCount++;
+        /* left pad each array with 0s. must convert Uint8Array to normal first. */
+        var waveform =
+            Array.from(analyser.waveform())
+                .map(x => String('000' + parseInt(x)).slice(-3))
+                .join(' ');
+        var frequencies =
+            Array.from(analyser.frequencies())
+                .map(x => String('000' + parseInt(x)).slice(-3))
+                .join(' ');
+        document.getElementById('waveform').innerHTML = waveform;
+        document.getElementById('frequencies').innerHTML = frequencies;
+        document.getElementById('rms').innerHTML = analyser.rms();
+    } draw();
+}, (error) => {
+    document.getElementById('error').innerHTML = error;
+});
+    </div>
+    <p class="note">This demo will play audio through to your speakers. Be careful when selecting microphone to avoid feedback!</p>
+    <p>Input values for this demo can be one of the following:</p>
+    <ul>
+        <li><button onclick="mic()">microphone</button></li>
+        <li><button onclick="radio()">radio stream</button></li>
+        <li><input type="file" id="file"></input></li>
+        <li>try your own audio url!</li>
+    </ul>
+    <input id="audioInput" type="text" placeholder="https://ksdt.ucsd.edu/listen/stream.mp3"></input>
+    <button id="start" onclick="start()">Start Analysis</button>
+    <button id="stop" onclick="stop()" disabled>Stop Analysis</button>
+
+    <pre id="error"></pre>
+
+    <div class="data">
+        <h3>waveform data</h3>
+        <pre id="waveform"></pre>
+    </div>
+    <div class="data">
+        <h3>frequency data</h3>
+        <pre id="frequencies"></pre>
+    </div>
+    <div class="data">
+        <h3>root mean square</h3>
+        <pre id="rms"></pre>
+    </div>
+
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
     <script src="../src/audio.js"></script>
+    <script src="./ace.js"></script>
+    <script type="text/javascript">
+        var analyser;
+        var editor = ace.edit("editor");
+        editor.setTheme("ace/theme/github");
+        editor.getSession().setMode("ace/mode/javascript");
+        function toggleCode() {
+            document.getElementById('editor').style.display =
+                document.getElementById('editor').style.display === 'none' ? '' : 'none';
+            editor.resize();
+        }
+        function mic() {
+            document.getElementById('audioInput').value = 'microphone';
+            start('microphone');
+        }
+        function radio() {
+            document.getElementById('audioInput').value = 'https://ksdt.ucsd.edu/listen/stream.mp3';
+            start('https://ksdt.ucsd.edu/listen/stream.mp3');
+        }
+        document.getElementById('file').addEventListener('change', handleFiles, false);
+        function handleFiles() {
+            var file = this.files[0];
+            document.getElementById('audioInput').value = file;
+            start(file);
+        }
+        function stop() {
+            if (analyser) {
+                analyser.end();
+            }
+            document.getElementById('start').disabled = false;
+        }
+        function start(input) {
+            document.getElementById('start').disabled = true;
+            document.getElementById('stop').disabled = false;
+            document.getElementById('error').innerHTML = '';
+            if (!input) { //if a button wasn't pressed, read from text input
+                var input = document.getElementById('audioInput').value;
+                if (input === '') {
+                    input = 'https://ksdt.ucsd.edu/listen/stream.mp3';
+                }
+            }
+            eval(editor.getValue());
+        }
+    </script>
 </body>
 </html>
